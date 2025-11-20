@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trajdatamanager"
+description = "Import, partition and visualize trajectory datasets."
+readme = "README.md"
+version = "1.1.0"
+license = {file = "LICENSE"}
+authors = [
+	{name = "Christoph M. Konrad", email = "c.m.konrad@tudelft.nl"}
+]
+requires-python = ">3.9"
+dependencies = [
+	"numpy",
+	"pandas",
+	"scikit-learn",
+	"scipy",
+	"pyproj",
+	"matplotlib",
+]
+	
+[tool.setuptools.packages.find]
+where = ["src"]  
