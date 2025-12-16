@@ -1707,6 +1707,70 @@ class Track:
 
         return self.crop_to_sample(i_begin, i_end)
     
+
+    def segment_by_indicator(self, indicator):
+        """Segment a track by an indicator array.
+
+        The indicator array should have the segment number
+        at every index belonging to the a segment. Sample
+        indices not belonging to any segment should have
+        np.nan or np.inf. For example:
+
+        [0,0,0,np.nan,np.nan,1,1,1,1,1,2,2,2,2,2]
+
+        creates three segments (0,1,2) and drops 
+        the data at indices 3 and 4.
+
+        Samples with the same segment number will
+        end up in the same segment, even if they are not
+        in one block. 
+
+        Parameters
+        ----------
+        indicator : array-like
+            The indicatory array. Must be length trk.n.
+
+        Returns
+        -------
+        Sequence
+            A sequence of Track object each representing one 
+            segment of the original track. 
+        """
+
+        segindicators = np.unique(indicator[np.isfinite(indicator)])
+
+        segments = []
+
+        for segid in segindicators:
+            mask = indicator == segid
+
+            # segment properties
+            data_seg = self.data[:,mask]
+            t_seg = self.t[mask]
+            metadata_seg = copy.deepcopy(self.metadata)
+            if "segment_id" in metadata_seg:
+                i=0
+                key = f"segment_id{i}"
+                while key in metadata_seg:
+                    i += 1
+                    key = f"segment_id{i}"
+            metadata_seg[key] = segid
+
+            # create segment Track
+            segments.append(Track(
+                self.track_id + f"_{segid}",
+                self.class_id,
+                t_seg, 
+                data_seg, 
+                metadata=metadata_seg,
+                diff_func=self.diff_func,
+                yaw_feature_index=self.yaw_feature_index,
+                data_feature_keys=self.data_feature_keys
+            ))
+        
+        return Sequence(segments)
+            
+    
     def segment_by_geofencing(self, xfences):
         """
         Segment a track into multiple tracks by geofencing.
