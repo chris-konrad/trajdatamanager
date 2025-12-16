@@ -57,3 +57,30 @@ def cart2polar(x, y):
     psi[y < 0] = -psi[y < 0]
 
     return rho, psi
+
+
+def forward_fill_finite(data):
+    """Fill non-finite (np.nan / np.inf) values with the 
+    last finite value before that index.
+
+    If the first value is not finite, it will be replaced
+    with 0.
+
+    Parameters
+    ----------
+    data : array-like
+        1D data array with nan/inf.
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
+    data = np.array(data)
+    if data.ndim > 1:
+        raise NotImplementedError("nd forward fill not implemented! Supply 1d arrays.")
+
+    data = np.where(np.isfinite(data), d, 0)
+    data = np.maximum.accumulate(data)
+
+    return data
