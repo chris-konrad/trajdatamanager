@@ -21,7 +21,7 @@ import copy
 from sklearn.decomposition import PCA
 from scipy.interpolate import CubicSpline
 from scipy.spatial.transform import Rotation, Slerp
-from trajdatamanager.utils import cart2polar, limitAngle
+from trajdatamanager.utils import cart2polar, limitAngle, to_finite, forward_fill_finite
 
 
 def sample_yaw(yaw_keys, t_keys, t_sampled):
@@ -174,6 +174,9 @@ class RTKLibGNSSManager(DataManager):
 
         df = self._read_pos_file(os.path.join(self.dir, filename))
 
+        if df.shape[0] == 0:
+            return []
+
         proj = ppj.Proj(proj=self.projection, zone=self.zone)
         x, y = proj(df["longitude(deg)"], df["latitude(deg)"])
 
@@ -200,8 +203,13 @@ class RTKLibGNSSManager(DataManager):
         
         # derive orientation from position trajectoriy
         with warnings.catch_warnings(action="ignore"): #ignore div/0 warning that occurs when someone is stationary
-           # temp, psi = cart2polar(x[2:] - x[:-2], y[2:] - y[:-2])
-           tmp, psi = cart2polar(np.gradient(x), np.gradient(y))
+            _, psi = cart2polar(np.gradient(x), np.gradient(y))
+                                  
+            # replace stationary
+            stationary = v < 0.2
+            psi[stationary] = np.nan
+            psi = forward_fill_finite(psi)
+
         
         i_stationary = np.where(np.isnan(psi))[0]
         if i_stationary.size > 0:
@@ -595,10 +603,14 @@ class Sequence:
             
             trki = self.tracks[index[i]]
             
-            if self.tracks[index[i-1]].t_end >= trki.t_begin:
+            if self.tracks[index[i-1]].t_end > trki.t_begin:
                 raise ValueError('Sequence is not serialzable into a single '
                                  'track! The tracks of this sequence overlap '
                                  'in time.')
+            elif self.tracks[index[i-1]].t_end == trki.t_begin:
+                # first/last value is double -> drop one
+                data = data[:-1,:] 
+                t = t[:-1]
  
             data = np.r_[data, trki.data]
             t = np.r_[t, trki.t]
@@ -1090,10 +1102,11 @@ class Sequence:
             ax.set_aspect('equal')
         
         if colors is None:
-            colors = [None] * len(self.tracks)
-        
-        for trk, col in zip(self.tracks, colors):
-            trk.plot_xy(ax, color=col, **kwargs)
+            for trk in self.tracks:
+                trk.plot_xy(ax, **kwargs)
+        else:
+            for trk, col in zip(self.tracks, colors):
+                trk.plot_xy(ax, color=col, **kwargs)
 
         if self.sequence_id is not None:
             ax.set_title(self.sequence_id) 
@@ -1241,7 +1254,7 @@ class Track:
 
         return datadict
         
-    def to_dataframe(self, relative_time=False):
+    def to_dataframe(self, relative_time=None):
         """
         Return a dataframe containing the data of this track. 
 
@@ -1249,16 +1262,16 @@ class Track:
         -------
         df : dataframe
             A dataframe containing all features and the timestamp of this run.
-        relative_time : datetime
+        relative_time : datetime, optional
             If a datetime object is provided, the timestamp column 't' contains
             the relative time differences in s to relative_time. If None, the
             returned dataframe contains absolute time as datetime objects. If 
             the time relative to the first timestamp is desired, set 
-            relative_time = self.t_begin
+            relative_time = self.t_begin. Default is None.
 
         """
         
-        return pd.DataFrame(data=self.to_dict(), realtive_time = relative_time)
+        return pd.DataFrame(data=self.to_dict(relative_time=relative_time))
     
     def write_csv(self, 
                   directory, 
@@ -1291,23 +1304,22 @@ class Track:
                                           f"to an existing directory!")     
                             
         path_data = os.path.join(directory, filename+".csv")
-        df = self.to_dataframe()
+        df = self.to_dataframe(relative_time=relative_time)
         df.to_csv(path_data, sep=';')
         
         if write_metadata:
             path_metadata = os.path.join(directory, filename+"_meta.txt")
-            meta = self.metadata
             
             with open(path_metadata, 'w') as f:
-                f.write(f"class_id: {self.class_id}")
-                f.write("relative_time: {relative_time}")
-                f.write(f"sample_time: {self.t_s}")
-                f.write(f"n_samples: {self.n}")
-                f.write(f"duration: {self.duration}")
+                f.write(f"class_id: {self.class_id}\n")
+                f.write(f"relative_time: {relative_time}\n")
+                f.write(f"sample_time: {self.t_s}\n")
+                f.write(f"n_samples: {self.n}\n")
+                f.write(f"duration: {self.duration}\n")
                 
                 if not relative_time:
-                    f.write(f"t_begin: {self.t_begin}")
-                    f.write(f"t_end: {self.t_end}")
+                    f.write(f"t_begin: {self.t_begin}\n")
+                    f.write(f"t_end: {self.t_end}\n")
                 
                 for key in self.metadata.keys():
                     f.write(f"{key}: {self.metadata[key]}\n")
@@ -1503,47 +1515,35 @@ class Track:
                                                       'provided as array of'
                                                       'datetime.datetime.')
         
-        t_begin = t_sample[0]
-        t_end = t_sample[-1]
-        
-        #This may not be necessary -> TODO: validate
-        i_begin, i_end = self.get_timespan_indices(t_begin, t_end)
-        t = [
-            (ti - self.t[i_begin]).total_seconds()
-            for ti in self.t[i_begin : min(i_end + 1, len(self.t))]
-        ]
-        t_sample = t_sample - t_sample[0]
-        t_sample = np.array([tsi.total_seconds() for tsi in t_sample])
-        
-        data = self.data[i_begin : min(i_end + 1, len(self.t)), :]
+        #t_begin = t_sample[0]
+        #t_end = t_sample[-1]
+        # get relative time and sampletime.
+        t_rel = np.array(self.get_relative_time())
+        t_sample_rel = np.array([(t- self.t[0]).total_seconds() for t in t_sample])
 
         # separate data arrays for position and rotation data
+        data = self.data
         if self.yaw_feature_index is not None:
-            sprev = data.shape
             data_yaw = data[:, self.yaw_feature_index]
             data = np.delete(data, self.yaw_feature_index, axis=1)
+            sampled_data_yaw = sample_yaw(data_yaw, t, t_sample)
 
-            try:
-                sampled_data_yaw = sample_yaw(data_yaw, t, t_sample)
-            except ValueError as e:
-                print(self.track_id)
-                print(f"{t[0]}, {t[-1]}, len={len(t)}")
-                print(f"{t_sample[0]}, {t_sample[-1]}, len={len(t_sample)}")
-                raise e
-
-        cs = CubicSpline(t, data)
-        sampled_data = cs(t_sample)
+        sampled_data = np.zeros((t_sample.size, data.shape[1]))
+        for i in range(data.shape[1]):
+            mask_finite = np.isfinite(data[:,i])
+            cs = CubicSpline(t_rel[mask_finite], data[:,i][mask_finite])
+            sampled_data[:,i] = cs(t_sample_rel)
 
         if self.yaw_feature_index is not None:
-            sprev = sampled_data.shape
             sampled_data = np.insert(
                 sampled_data, self.yaw_feature_index, sampled_data_yaw, axis=1
             )
-        t = [None] * sampled_data.shape[0]
-        for i in range(sampled_data.shape[0]):
-            t[i] = t_begin + dt.timedelta(seconds=t_sample[i])
 
-        return t, sampled_data
+        #t = [None] * sampled_data.shape[0]
+        #for i in range(sampled_data.shape[0]):
+        #    t[i] = t_begin + dt.timedelta(seconds=t_sample[i])
+
+        return t_sample, sampled_data
 
     def sample(self, t_begin=None, t_end=None, t_s=None):
         """Sample a track on the interval [t_begin, t_end] with the sample
@@ -1607,8 +1607,9 @@ class Track:
             Resampled Track.
         """
         
-        #crop sample times to track length
-        t = t[(t >= self.t_begin) & (t <= self.t_end)]
+        #crop sample times to available data
+        i_begin, i_end = self.get_timespan_indices(t[0], t[-1])
+        t = t[(t >= self.t[i_begin]) & (t <= self.t[i_end])]
 
         t, sampled_data = self._get_sampled_timeseries_at_t(t)
         
@@ -1745,16 +1746,17 @@ class Track:
             mask = indicator == segid
 
             # segment properties
-            data_seg = self.data[:,mask]
+            data_seg = self.data[mask,:]
             t_seg = self.t[mask]
             metadata_seg = copy.deepcopy(self.metadata)
-            if "segment_id" in metadata_seg:
+            key = "segment_id"
+            if key in metadata_seg:
                 i=0
                 key = f"segment_id{i}"
                 while key in metadata_seg:
                     i += 1
                     key = f"segment_id{i}"
-            metadata_seg[key] = segid
+            metadata_seg[key] = int(segid)
 
             # create segment Track
             segments.append(Track(
@@ -1884,8 +1886,6 @@ class Track:
                 kwargs['color'] = "black"
             elif self.class_id == 4:
                 kwargs['color'] = "gray"
-            else:
-                kwargs['color'] = "blue"
         
         if 'label' not in kwargs:
             kwargs['label'] = self.track_id
@@ -2176,8 +2176,48 @@ class Track:
                 data_feature_keys=self.data_feature_keys,
             )
         return new
+
+
+    def get_begin_allfinite(self):
+        """Get the time and index of the first index after which at which all 
+        features had at least one finite value.
+
+        Returns
+        -------
+        t_begin : datetime.datetime
+            Timestamp of the first sample where all features have at least
+            one finite value.
+        i_begin : int
+            Index of the first sample where all features have at least
+            one finite value.
+        """
+        mask = np.isfinite(self.data)
+        indices_first_finite = np.argmax(mask, axis=0)
+
+        i_begin = np.max(indices_first_finite)
+        t_begin = self.t[i_begin]
+
+        return t_begin, i_begin
     
-    
-def to_finite(traj):
-    """Return only the finite elements of an array """
-    return traj[np.isfinite(traj)]
+
+    def get_end_allfinite(self):
+        """Get the time and index of the last index until which all 
+        features have finite values.
+
+        Returns
+        -------
+        t_end : datetime.datetime
+            Timestamp of the last sample where all features still have 
+            some finite value.
+        i_end : int
+            Index of the last sample where all features still have 
+            some finite value.
+        """
+
+        mask = np.flip(np.isfinite(self.data), axis=0)
+        indices_first_finite = np.argmax(mask, axis=0)
+
+        i_end = self.data.shape[0] - np.max(indices_first_finite) - 1
+        t_end = self.t[i_end]
+
+        return t_end, i_end
