@@ -25,7 +25,7 @@ from trajdatamanager.utils import cart2polar, limitAngle, to_finite, forward_fil
 
 
 def sample_yaw(yaw_keys, t_keys, t_sampled):
-    rots = Rotation.from_euler("Z", yaw_keys)
+    rots = Rotation.from_euler("Z", yaw_keys[:,np.newaxis])
 
     slerp = Slerp(t_keys, rots)
     rots_sampled = slerp(t_sampled)
@@ -1526,7 +1526,7 @@ class Track:
         if self.yaw_feature_index is not None:
             data_yaw = data[:, self.yaw_feature_index]
             data = np.delete(data, self.yaw_feature_index, axis=1)
-            sampled_data_yaw = sample_yaw(data_yaw, t, t_sample)
+            sampled_data_yaw = sample_yaw(data_yaw, t_rel, t_sample_rel)
 
         sampled_data = np.zeros((t_sample.size, data.shape[1]))
         for i in range(data.shape[1]):
