@@ -470,7 +470,8 @@ class Sequence:
             
             seq_elements_metadata[self.tracks[index[i]].track_id] = metadata_i
             
-        return Track(name0 + '-' + name1, 
+        track_type = type(self.tracks[0])
+        return track_type(name0 + '-' + name1, 
                      class_id,
                      t, 
                      data,
@@ -1058,7 +1059,7 @@ class Track:
 
         self.calc_time_properties()
 
-        self.t_s = self.duration.total_seconds() / (self.n-1)
+        self.t_s = self.duration.total_seconds() / self.n
 
         self.yaw_feature_index = yaw_feature_index
         
