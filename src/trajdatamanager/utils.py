@@ -109,9 +109,6 @@ def cart2polar(x, y):
     """
     Transfrom cartesian coordinates into polar coordinates with the angle psi
     in the range [-pi, pi]
-    
-    Function copied and modified from cyclistsocialforce.utils by Christoph 
-    Konrad (MIT License). 
 
     Parameters
     ----------
@@ -124,13 +121,8 @@ def cart2polar(x, y):
     psi : array-like.
 
     """
-    rho = np.sqrt(np.power(x, 2) + np.power(y, 2))
-
-    psi = np.arccos(x / rho)
-    if type(psi) is not np.ndarray:
-        psi = np.array(psi)
-
-    psi[y < 0] = -psi[y < 0]
+    psi = np.arctan2(y, x)
+    rho = np.hypot(x, y)   
 
     return rho, psi
 
