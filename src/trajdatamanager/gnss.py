@@ -134,6 +134,11 @@ class RTKLibGNSSManager(DataManager):
         sigma_x = df['sde(m)'].to_numpy()
         sigma_y = df['sdn(m)'].to_numpy()
         sigma_xy = df['sdne(m)'].to_numpy()
+
+        sigma_floor = 1e-6
+        sigma_y = np.where(sigma_y==0, sigma_floor, sigma_y)
+        sigma_x = np.clip(sigma_x, a_min=sigma_floor + sigma_xy**2/sigma_y, a_max=None) #Replace truncated values according to Cauchy-Schwartz bound
+        sigma_y = np.clip(sigma_y, a_min=sigma_floor + sigma_xy**2/sigma_x, a_max=None)
         
         # time
         t = np.array([ti.to_pydatetime().replace(tzinfo=datetime.UTC) - datetime.timedelta(seconds=18) for ti in df["Timestamp"]])
@@ -154,6 +159,10 @@ class RTKLibGNSSManager(DataManager):
         start_blocks = np.argwhere(np.diff(block_mask) > 0).flatten()
         end_blocks = np.argwhere(np.diff(block_mask) < 0).flatten()
 
+        if len(start_blocks) == 0:
+            start_blocks = [0]
+        if len(end_blocks) == 0:
+            end_blocks = [t_full.size]
         if start_blocks[0] > end_blocks[0]:
             start_blocks = np.r_[0, start_blocks]
         if start_blocks[-1] > end_blocks[-1]:
@@ -249,7 +258,7 @@ class RTKLibGNSSManager(DataManager):
             metadata=metadata
         )
 
-        trk.plot_uncertainties()
+        #trk.plot_uncertainties()
 
         return [trk]
     
@@ -344,6 +353,7 @@ class RTKLibGNSSTrack(Track):
             self['varx'][time_index] = cov[0,0]
             self['vary'][time_index] = cov[1,1]
             self['covxy'][time_index] = cov[0,1]
+
 
     def rotate_xy(self, alpha, deg=False):
         """Rotate a track in the xy plane
@@ -519,3 +529,25 @@ def llh_to_enu(lat, lon, h, lat_ref=None, lon_ref=None, h_ref=None):
 
     return ecef_to_enu(X-X_ref, Y-Y_ref, Z-Z_ref, lat_ref, lon_ref)
 
+
+def is_psd(M, tol=1e-12):
+    """
+    Check if a real symmetric matrix is positive semidefinite (PSD).
+
+    Parameters
+    ----------
+    M : np.ndarray
+        Square matrix (n x n). Will be symmetrized before the check.
+    tol : float
+        Numerical tolerance. Eigenvalues >= -tol are treated as non-negative.
+
+    Returns
+    -------
+    ok : bool
+        True if PSD within tolerance.
+    min_eig : float
+        Minimum eigenvalue (after symmetrization).
+    """
+    M = 0.5 * (M + M.T)  # symmetrize to remove tiny asymmetries
+    w = np.linalg.eigvalsh(M)
+    return np.all(w >= -tol), float(w.min())
