@@ -14,6 +14,7 @@ import datetime as dt
 import matplotlib.pyplot as plt
 from matplotlib.markers import MarkerStyle
 from matplotlib.transforms import Affine2D
+from matplotlib.axes import Axes
 
 
 import copy
@@ -1789,13 +1790,13 @@ class Track:
             pass
         
         try:
-            ivx = self.data_feature_keys.index('v_x')
+            ivx = self.data_feature_keys.index('vx')
             data_new[:,ivx] = self['v'] * np.cos(data_new[:,ipsi])
         except:
             pass
         
         try:
-            ivy = self.data_feature_keys.index('v_y')
+            ivy = self.data_feature_keys.index('vy')
             data_new[:,ivy] = self['v'] * np.sin(data_new[:,ipsi])
         except:
             pass
@@ -1857,11 +1858,12 @@ class Track:
 
         Parameters
         ----------
-        axes : list of axes, optional
-            Axes to be plotted in. Must be the same number of axes as the
-            track has features. Creates a new figure per default.
-        features : list, optional
-            List of feature names 
+        axes : Axes or list of Axes, optional
+            Axes to be plotted in. Must be the same number of axes as features 
+            selected for plotting. If None, creates a new figure.
+        features : str or list, optional
+            List of feature names to plot. Must be the same number as the given axes. If
+            None, all features are plotted.
         plot_over_timestamps : bool, optional
             If true, the data is plotted over timestamps. If false, the data
             is plotted over sample number. The default is False.
@@ -1879,6 +1881,8 @@ class Track:
 
         if features is None:
             features = self.data_feature_keys
+        if isinstance(features, str):
+            features = [features]
         for f in features:
             if f not in self.data_feature_keys:
                 raise ValueError((f"'{f}' is not a feature of this track. Available features are:"
@@ -1886,6 +1890,8 @@ class Track:
         
         if axes is None:
             fig, axes = plt.subplots(len(features), 1, sharex=True)
+        if isinstance(axes, Axes):
+            axes = np.array([axes])
         else:
             if len(axes) != len(features):
                 raise ValueError((f"Must provide the same number of axes as the track has features."
