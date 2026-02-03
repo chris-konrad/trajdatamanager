@@ -189,6 +189,11 @@ class RTKLibGNSSManager(DataManager):
         v = np.full(t_full.size, np.nan, dtype=float)
         sigma_psi = np.full(t_full.size, np.inf, dtype=float)
         sigma_v = np.full(t_full.size, np.inf, dtype=float)
+        vx = np.full(t_full.size, np.nan, dtype=float)
+        vy = np.full(t_full.size, np.nan, dtype=float)
+        var_vx = np.full(t_full.size, np.nan, dtype=float)
+        var_vy = np.full(t_full.size, np.nan, dtype=float)
+        cov_vxvy = np.full(t_full.size, np.nan, dtype=float)
 
         for ia, io in zip(start_blocks, end_blocks):
             if io - ia < 3:
@@ -208,19 +213,19 @@ class RTKLibGNSSManager(DataManager):
 
             # check for numerical errors in the covariance
             # must satisfy cov <= sqrt(var_x * var_y)
-            var_vx = (sigma_x2[ia:io][:-2] + sigma_x2[ia:io][2:]) / (4 * dt**2)
-            var_vy = (sigma_y2[ia:io][:-2] + sigma_y2[ia:io][2:]) / (4 * dt**2)
-            cov_vxvy = (sigma_xy2[ia:io][:-2] + sigma_xy2[ia:io][2:]) / (4 * dt**2)
+            var_vxb = (sigma_x2[ia:io][:-2] + sigma_x2[ia:io][2:]) / (4 * dt**2)
+            var_vyb = (sigma_y2[ia:io][:-2] + sigma_y2[ia:io][2:]) / (4 * dt**2)
+            cov_vxvyb = (sigma_xy2[ia:io][:-2] + sigma_xy2[ia:io][2:]) / (4 * dt**2)
 
-            max_cov_v = np.sqrt(var_vx * var_vy)
-            val = np.logical_and(cov_vxvy < max_cov_v, cov_vxvy >-max_cov_v)
+            max_cov_v = np.sqrt(var_vxb * var_vyb)
+            val = np.logical_and(cov_vxvyb < max_cov_v, cov_vxvyb >-max_cov_v)
 
             # calculate speed and heading standard deviation
-            sigvb = np.full(var_vx.size, np.inf)
-            sigpsib = np.full(var_vx.size, np.inf)
+            sigvb = np.full(var_vxb.size, np.inf)
+            sigpsib = np.full(var_vxb.size, np.inf)
 
-            sigvb[val] = np.sqrt((vxb[val]**2 * var_vx[val] + vyb[val]**2 * var_vy[val] + 2 * vxb[val] * vyb[val] * cov_vxvy[val]) / v2b[val])
-            sigpsib[val] = np.sqrt((vyb[val]**2 * var_vx[val] + vxb[val]**2 * var_vy[val] - 2 * vxb[val] * vyb[val] * cov_vxvy[val]) / v2b[val]**2)
+            sigvb[val] = np.sqrt((vxb[val]**2 * var_vxb[val] + vyb[val]**2 * var_vyb[val] + 2 * vxb[val] * vyb[val] * cov_vxvyb[val]) / v2b[val])
+            sigpsib[val] = np.sqrt((vyb[val]**2 * var_vxb[val] + vxb[val]**2 * var_vyb[val] - 2 * vxb[val] * vyb[val] * cov_vxvyb[val]) / v2b[val]**2)
 
             # assing
             v[ia+1:io-1] = vb
@@ -228,6 +233,13 @@ class RTKLibGNSSManager(DataManager):
 
             sigma_v[ia+1:io-1] = sigvb
             sigma_psi[ia+1:io-1] = sigpsib
+
+            vx[ia+1:io-1] = vxb
+            vy[ia+1:io-1] = vyb
+
+            var_vx[ia+1:io-1] = var_vxb
+            var_vy[ia+1:io-1] = var_vyb
+            cov_vxvy[ia+1:io-1] = cov_vxvyb
 
         #inflate variance due to independent sample assumption
         sigma_v *= 6
@@ -239,13 +251,19 @@ class RTKLibGNSSManager(DataManager):
         psi = np.where(moving, psi, np.nan)
         sigma_v = np.where(moving, sigma_v, np.inf)
         sigma_psi = np.where(moving, sigma_psi, np.inf)
+        vx = np.where(moving, vx, np.nan)
+        vy = np.where(moving, vy, np.nan)
+        var_vx = np.where(moving, var_vx, np.nan)
+        var_vy = np.where(moving, var_vy, np.nan)
+        cov_vxvy = np.where(moving, cov_vxvy, np.nan)
 
         # create track
-        data = np.c_[x, y, psi, v,  
+        data = np.c_[x, y, psi, v,  vx, vy,
                      sigma_x2, sigma_y2, sigma_xy2, 
-                     sigma_v**2, sigma_psi**2]
+                     sigma_v**2, sigma_psi**2,
+                     var_vx, var_vy, cov_vxvy]
 
-        keys = ["x", "y", "psi", "v", "varx", "vary", "covxy", "varv", "varpsi"]
+        keys = ["x", "y", "psi", "v", "vx" , "vy", "varx", "vary", "covxy", "varv", "varpsi", "varvx", "varvy", "covvxvy"]
         
         metadata = {'track_type': 'RTKLIBGNSSData',
                     'reference_location': self.reference_location,
@@ -258,7 +276,7 @@ class RTKLibGNSSManager(DataManager):
             metadata=metadata
         )
 
-        #trk.plot_uncertainties()
+        trk.plot_uncertainties()
 
         return [trk]
     
@@ -293,8 +311,10 @@ class RTKLibGNSSTrack(Track):
     def __init__(self,  *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        required_features = set(["x", "y", "psi", "v", "varx", "vary", "covxy", "varv", "varpsi"])
-        if not set(self.data_feature_keys).issubset(required_features):
+        # x, y and vx/vy are required to describe the position and orientation. psi and v can be derived. 
+        # Better to represent orientation as velocity vector then as psi to tackle the discontinuities. 
+        required_features = set(["x", "y", "vx", "vy", "varx", "vary", "covxy", "varvx", "varvy", "covvxvy"])
+        if not required_features.issubset(set(self.data_feature_keys)):
             msg = (f"A RTKLibGNSSTrack requires at least the features {required_features}. Instead,"
                    f"you tried to create a Track object with the features {set(self.data_feature_keys)}")
             raise ValueError(msg)
@@ -331,6 +351,39 @@ class RTKLibGNSSTrack(Track):
                             [self['covxy'][time_index], self['vary'][time_index]],])
         return cov
     
+
+    def get_velocity_covariance(self, time_index=None):
+        """Get the velocity (vx, vy) covariance matrix at a given indes. 
+
+        This requires varvx, varvy, and covvxvy features in the track object. 
+        Tracks loaded by datamanager.RTKLIBdatamanager have these features.
+
+        If the track has not been rotated or shifted, XY equals EN (East/North)
+        relative to the reference location. The Z (Up) component is ignored.
+
+        Parameters
+        ----------
+        trk : datamanager.RTKLibTrack
+            The track object to get the covariance from. 
+        time_index : int, optional
+            The time step. If not given, return the trajectory of 
+            covariance matrices.
+
+        Returns
+        -------
+        covariance : array
+            The 2x2 XY covariance matrix at time_index or the
+            2x2xN stack of covariances for all times. 
+        """
+        if time_index is None:
+            cov = np.stack([self['varvx'], self['covvxvy'], self['covvxvy'], self['varvy']], axis=1)
+            cov = cov.reshape(self.n, 2, 2)
+        else:
+            cov = np.array([[self['varvx'][time_index], self['covvxvy'][time_index]],
+                            [self['covvxvy'][time_index], self['varvy'][time_index]],])
+        return cov
+    
+
     def set_position_covariance(self, cov, time_index=None):
         """Set the covariances at a given time to a specific value.
 
@@ -353,6 +406,30 @@ class RTKLibGNSSTrack(Track):
             self['varx'][time_index] = cov[0,0]
             self['vary'][time_index] = cov[1,1]
             self['covxy'][time_index] = cov[0,1]
+
+
+    def set_velocity_covariance(self, cov, time_index=None):
+        """Set the covariances at a given time to a specific value.
+
+        Parameters
+        ----------
+        cov : array
+            2x2 or 2x2xN covariance 
+        time_index : int, optional
+            The time index to set a specific covariance. If None, 
+            the covariances for all times are set and cov must be 2x2xN. 
+            By default None
+        """
+        if time_index is None:
+            self['varvx'] = cov[:,0,0]
+            self['varvy'] = cov[:,1,1]
+            self['covvxvy'] = cov[:,0,1]
+        else:
+            if cov.ndim == 3:
+                cov = cov[time_index,:,:]
+            self['varvx'][time_index] = cov[0,0]
+            self['varvy'][time_index] = cov[1,1]
+            self['covvxvy'][time_index] = cov[0,1]
 
 
     def rotate_xy(self, alpha, deg=False):
@@ -381,17 +458,21 @@ class RTKLibGNSSTrack(Track):
 
         R = np.array([[cosalpha, -sinalpha], [sinalpha, cosalpha]])
         
-        cov = self.get_position_covariance()
-        cov = R @ cov @ R.T
-        self.set_position_covariance(cov)
+        cov_pos = self.get_position_covariance()
+        cov_pos = R @ cov_pos @ R.T
+        self.set_position_covariance(cov_pos)
+
+        cov_vel = self.get_velocity_covariance()
+        cov_vel = R @ cov_vel @ R.T
+        self.set_velocity_covariance(cov_vel)
 
         super().rotate_xy(alpha, False)
 
     def plot_uncertainties(self):
         
-        fig, axes = plt.subplots(4,1, sharex=True, layout='constrained')
+        fig, axes = plt.subplots(6,1, sharex=True, layout='constrained')
         
-        features = ['x', 'y', 'psi', 'v']
+        features = ['x', 'y', 'psi', 'v', 'vx', 'vy']
         self.plot(axes=axes, features=features, plot_over_timestamps=True)
 
         for ax, feat in zip(axes, features):
