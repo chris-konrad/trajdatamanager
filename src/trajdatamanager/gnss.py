@@ -134,6 +134,12 @@ class RTKLibGNSSManager(DataManager):
         sigma_x = df['sde(m)'].to_numpy()
         sigma_y = df['sdn(m)'].to_numpy()
         sigma_xy = df['sdne(m)'].to_numpy()
+        position_mode = df['Q'].to_numpy()
+
+        #inflate in float mode. This seems to often underestimate the error
+        sigma_x[position_mode==2] = 0.3#np.minimum(0.5, sigma_x[position_mode==2]*100)
+        sigma_y[position_mode==2] = 0.3#np.minimum(0.5, sigma_x[position_mode==2]*100)
+        
 
         sigma_floor = 1e-6
         sigma_y = np.where(sigma_y==0, sigma_floor, sigma_y)
@@ -242,11 +248,13 @@ class RTKLibGNSSManager(DataManager):
             cov_vxvy[ia+1:io-1] = cov_vxvyb
 
         #inflate variance due to independent sample assumption
+        var_vx *= 6
+        var_vx *= 6
         sigma_v *= 6
         sigma_psi *= 12
         
         # handle stationary parts
-        moving = v > 3 * sigma_v
+        moving = v > 0.5
         v = np.where(moving, v, np.nan)
         psi = np.where(moving, psi, np.nan)
         sigma_v = np.where(moving, sigma_v, np.inf)
@@ -476,7 +484,7 @@ class RTKLibGNSSTrack(Track):
         self.plot(axes=axes, features=features, plot_over_timestamps=True)
 
         for ax, feat in zip(axes, features):
-            sigma = 3 * np.sqrt(self[f'var{feat}']) 
+            sigma = np.sqrt(self[f'var{feat}']) 
             ax.fill_between(self.t, self[feat]-sigma, self[feat]+sigma, alpha=0.2, where=np.isfinite(self['varx']))
             ax.set_label(feat)
         axes[0].set_title(self.track_id)
