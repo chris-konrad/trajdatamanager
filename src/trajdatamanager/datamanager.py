@@ -1027,15 +1027,16 @@ class Track:
         class_id,
         t,
         data,
-        metadata={},
+        metadata=None,
         diff_func=absolute_difference,
         yaw_feature_index=None,
         data_feature_keys=None,
     ):
         self.track_id = track_id
         self.class_id = class_id
-        self.metadata = metadata
         self.diff_func = diff_func
+
+        self.metadata = {} if metadata is None else metadata
 
         if data.shape[0] != len(t):
             if data.shape[1] == len(t):

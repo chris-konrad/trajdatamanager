@@ -131,15 +131,15 @@ class RTKLibGNSSManager(DataManager):
                              h_ref=self.reference_location[2])
         
         # measurement covariances
-        sigma_x = df['sde(m)'].to_numpy()
-        sigma_y = df['sdn(m)'].to_numpy()
-        sigma_xy = df['sdne(m)'].to_numpy()
-        position_mode = df['Q'].to_numpy()
+        sigma_x = df['sde(m)'].to_numpy(copy=True)
+        sigma_y = df['sdn(m)'].to_numpy(copy=True)
+        sigma_xy = df['sdne(m)'].to_numpy(copy=True)
+        position_mode = df['Q'].to_numpy(copy=True)
 
         #inflate in float mode. This seems to often underestimate the error
-        sigma_x[position_mode==2] = 0.3#np.minimum(0.5, sigma_x[position_mode==2]*100)
-        sigma_y[position_mode==2] = 0.3#np.minimum(0.5, sigma_x[position_mode==2]*100)
-        
+        if np.any(position_mode==2):
+            sigma_x[position_mode==2] = 0.3#np.minimum(0.5, sigma_x[position_mode==2]*100)
+            sigma_y[position_mode==2] = 0.3#np.minimum(0.5, sigma_x[position_mode==2]*100)
 
         sigma_floor = 1e-6
         sigma_y = np.where(sigma_y==0, sigma_floor, sigma_y)
@@ -284,7 +284,7 @@ class RTKLibGNSSManager(DataManager):
             metadata=metadata
         )
 
-        trk.plot_uncertainties()
+        #trk.plot_uncertainties()
 
         return [trk]
     
@@ -305,9 +305,9 @@ class RTKLibGNSSManager(DataManager):
         df = pd.read_table(
             filepath,
             sep=r"\s+",
-            parse_dates={"Timestamp": [0, 1]},
             skiprows=self.num_skip_rows,
         )
+        df['Timestamp'] = pd.to_datetime(df[["%", "GPST"]].astype(str).agg(" ".join, axis=1))
 
         return df
     
