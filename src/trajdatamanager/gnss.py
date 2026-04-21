@@ -98,7 +98,7 @@ class RTKLibGNSSManager(DataManager):
         for path, folders, files in os.walk(self.dir):
             for f in files:
                 if f[-4:] == ".pos":
-                    tracks += self.load_tracks(f)
+                    tracks += self.load_tracks(os.path.join(os.path.relpath(path, self.dir), f))
             
         return Sequence(tracks)
 
@@ -307,7 +307,8 @@ class RTKLibGNSSManager(DataManager):
             sep=r"\s+",
             skiprows=self.num_skip_rows,
         )
-        df['Timestamp'] = pd.to_datetime(df[["%", "GPST"]].astype(str).agg(" ".join, axis=1))
+        if df.size>0:
+            df['Timestamp'] = pd.to_datetime(df[["%", "GPST"]].astype(str).agg(" ".join, axis=1))
 
         return df
     
