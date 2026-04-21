@@ -1375,11 +1375,12 @@ class Track:
             data = np.delete(data, self.yaw_feature_index, axis=1)
             sampled_data_yaw = sample_yaw(data_yaw, t_rel, t_sample_rel)
 
-        sampled_data = np.zeros((t_sample.size, data.shape[1]))
+        sampled_data = np.full((t_sample.size, data.shape[1]), np.nan)
         for i in range(data.shape[1]):
             mask_finite = np.isfinite(data[:,i])
-            cs = CubicSpline(t_rel[mask_finite], data[:,i][mask_finite])
-            sampled_data[:,i] = cs(t_sample_rel)
+            if np.any(mask_finite):
+                cs = CubicSpline(t_rel[mask_finite], data[:,i][mask_finite])
+                sampled_data[:,i] = cs(t_sample_rel)
 
         if self.yaw_feature_index is not None:
             sampled_data = np.insert(
@@ -1556,7 +1557,7 @@ class Track:
         return self.crop_to_sample(i_begin, i_end)
     
 
-    def segment_by_indicator(self, indicator):
+    def segment_by_indicator(self, indicator, n_min=0):
         """Segment a track by an indicator array.
 
         The indicator array should have the segment number
@@ -1577,6 +1578,10 @@ class Track:
         ----------
         indicator : array-like
             The indicatory array. Must be length trk.n.
+        n_min : int, optional
+            Minimum number of consecutive samples for a segment to be considered. 
+            Default is 0, returning all segements (also single-sample segments).
+            Use to denoise segmentation.
 
         Returns
         -------
@@ -1591,6 +1596,9 @@ class Track:
 
         for segid in segindicators:
             mask = indicator == segid
+
+            if np.sum(mask) < n_min:
+                continue
 
             # segment properties
             data_seg = self.data[mask,:]
