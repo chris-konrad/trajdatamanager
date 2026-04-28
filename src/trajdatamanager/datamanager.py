@@ -1545,7 +1545,7 @@ class Track:
 
         return self
 
-    def crop_to_timespan(self, t_begin, t_end):
+    def crop_to_timespan(self, t_begin, t_end, inplace=True):
         t_begin = max(t_begin, self.t_begin)
         t_end = min(t_end, self.t_end)
 
@@ -1554,7 +1554,11 @@ class Track:
         if i_begin is None:
             return None
 
-        return self.crop_to_sample(i_begin, i_end)
+        if inplace:
+            return self.crop_to_sample(i_begin, i_end)
+        else:
+            copy_self = copy.deepcopy(self)
+            return copy_self.crop_to_sample(i_begin, i_end)
     
 
     def segment_by_indicator(self, indicator, n_min=0):
