@@ -531,9 +531,6 @@ class Sequence:
     def shift_xy(self, dx, dy, x_name='x', y_name='y'):
         """Shift the tracks in this sequence in the xy plane
 
-        This requires the tracks of this sequence to have the features 'x' and 
-        'y'.       
-
         Parameters
         ----------
         dx : float
@@ -1822,9 +1819,6 @@ class Track:
 
     def shift_xy(self, dx, dy, x_name='x', y_name='y'):
         """Shift this track in the x/y-plane.
-
-        This requires the tracks of this sequence to have the features 'x' and 
-        'y'.       
 
         Parameters
         ----------
