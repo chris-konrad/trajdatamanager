@@ -528,7 +528,7 @@ class Sequence:
         for trk in self.tracks:
             trk.rotate_xy(alpha, deg=deg)
 
-    def shift_xy(self, dx, dy):
+    def shift_xy(self, dx, dy, x_name='x', y_name='y'):
         """Shift the tracks in this sequence in the xy plane
 
         This requires the tracks of this sequence to have the features 'x' and 
@@ -540,6 +540,10 @@ class Sequence:
             X-shift so that x <- x + dx
         dy : float
             Y-shift so that y <- y + dy
+        x_name: string (optional)
+            name of the column with x-data
+        y_name: string (optional)
+            name of the column with y-data
 
         Returns
         -------
@@ -547,7 +551,7 @@ class Sequence:
 
         """
         for trk in self:
-            trk.shift_xy(dx, dy)
+            trk.shift_xy(dx, dy, x_name=x_name, y_name=y_name)
 
     def plot(self, track_ids=None, axes=None, features=None, plot_over_timestamps=False, **plot_kwargs):
         """Plot all features of this track
@@ -1816,7 +1820,7 @@ class Track:
                
         self.data = data_new
 
-    def shift_xy(self, dx, dy):
+    def shift_xy(self, dx, dy, x_name='x', y_name='y'):
         """Shift this track in the x/y-plane.
 
         This requires the tracks of this sequence to have the features 'x' and 
@@ -1828,14 +1832,18 @@ class Track:
             X-shift so that x <- x + dx
         dy : float
             Y-shift so that y <- y + dy
+        x_name: string (optional)
+            name of the column with x-data
+        y_name: string (optional)
+            name of the column with y-data
 
         Returns
         -------
         None.
 
         """
-        self['x'] += dx
-        self['y'] += dy 
+        self[x_name] += dx
+        self[y_name] += dy 
 
     def has_time_overlap(self, other, dtmin=dt.timedelta(seconds=0)):
         """Check of this track overlaps in time with another track by
