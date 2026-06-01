@@ -7,6 +7,7 @@ Created on Thu Apr  4 16:10:17 2024
 import warnings
 import os
 import json
+import yaml
 import pandas as pd
 import numpy as np
 import datetime as dt
@@ -97,6 +98,20 @@ def difference_features_v1(data1, data2):
     yaw_feature_index = 1
 
     return ddata, yaw_feature_index
+
+
+def read_metadata_yaml(filepath):
+    """
+    TODO: Write docstring
+    """
+    # TODO: write function
+    with open(filepath, "r") as f:
+        metadata = yaml.safe_load(f)
+
+    duration = pd.to_timedelta(metadata['duration']).to_pytimedelta()
+    metadata['duration'] = duration
+
+    return metadata
 
 
 class DataManager:
@@ -1141,7 +1156,9 @@ class Track:
             written file contains absolute timestamps. If 
             the time relative to the first timestamp is desired, set 
             relative_time = self.t_begin
-        write_metadata
+        write_metadata : bool
+            If True, a .yaml-file will be written containing the metadata of
+            the Track object.
 
         Returns
         -------
@@ -1156,21 +1173,23 @@ class Track:
         df.to_csv(path_data, sep=';')
         
         if write_metadata:
-            path_metadata = os.path.join(directory, filename+"_meta.txt")
+            path_metadata = os.path.join(directory, filename+"_meta.yaml")
             
+            meta_dict = {'class_id': self.class_id,
+                         'relative_time': relative_time,
+                         'sample_time': self.t_s,
+                         'n_samples': self.n,
+                         'duration': str(self.duration)}
+            
+            if not relative_time:
+                meta_dict['t_begin'] = self.t_begin
+                meta_dict['t_end'] = self.t_end
+
+            for key in self.metadata.keys():
+                meta_dict[key] = self.metadata[key]
+
             with open(path_metadata, 'w') as f:
-                f.write(f"class_id: {self.class_id}\n")
-                f.write(f"relative_time: {relative_time}\n")
-                f.write(f"sample_time: {self.t_s}\n")
-                f.write(f"n_samples: {self.n}\n")
-                f.write(f"duration: {self.duration}\n")
-                
-                if not relative_time:
-                    f.write(f"t_begin: {self.t_begin}\n")
-                    f.write(f"t_end: {self.t_end}\n")
-                
-                for key in self.metadata.keys():
-                    f.write(f"{key}: {self.metadata[key]}\n")
+                yaml.dump(meta_dict, f)
                 
                     
                     
