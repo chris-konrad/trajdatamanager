@@ -102,9 +102,19 @@ def difference_features_v1(data1, data2):
 
 def read_metadata_yaml(filepath):
     """
-    TODO: Write docstring
+    Read yaml-file with metadata, created by Track.write_csv(..., write_metadata=True)
+
+    Parameters
+    --------
+    filepath : str
+        Filepath of the yaml-file with metadata
+    
+    Returns
+    --------
+    metadata : dict
+        Dictionary with metadata
     """
-    # TODO: write function
+
     with open(filepath, "r") as f:
         metadata = yaml.safe_load(f)
 
