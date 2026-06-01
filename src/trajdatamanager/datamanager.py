@@ -1077,7 +1077,7 @@ class Track:
 
         self.calc_time_properties()
 
-        self.t_s = self.duration.total_seconds() / self.n
+        self.t_s = round(self.duration.total_seconds() / (self.n - 1), 6)       # round to microseconds
 
         self.yaw_feature_index = yaw_feature_index
         
