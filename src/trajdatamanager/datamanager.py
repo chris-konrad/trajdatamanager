@@ -1468,7 +1468,7 @@ class Track:
 
         return self
     
-    def sample_at_times(self, t):
+    def sample_at_times(self, t, inplace=True):
         """Sample a track at the times t
         
         This does not extrapolate. Rather, the requested time is croped to 
@@ -1478,6 +1478,9 @@ class Track:
         ----------
         t : Array
             Sample times given as array of datetime.datetime
+        inplace : bool
+            If True, self is resampled.
+            If False, a resampled deepcopy of self is returned.
             
         Returns
         -------
@@ -1491,11 +1494,18 @@ class Track:
 
         t, sampled_data = self._get_sampled_timeseries_at_t(t)
         
-        self.t = t
-        self.data = sampled_data
-        self.calc_time_properties()
-
-        return self
+        if inplace:
+            self.t = t
+            self.data = sampled_data
+            self.calc_time_properties()
+            return self
+        else:
+            copy_self = copy.deepcopy(self)
+            copy_self.t = t
+            copy_self.data = sampled_data
+            copy_self.calc_time_properties()
+            return copy_self
+        
         
 
     def get_relative_time(self, t_ref=None):
