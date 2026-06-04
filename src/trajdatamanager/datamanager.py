@@ -1490,6 +1490,8 @@ class Track:
         
         #crop sample times to available data
         i_begin, i_end = self.get_timespan_indices(t[0], t[-1])
+        if not i_begin == 0:
+            i_begin = i_begin - 1
         t = t[(t >= self.t[i_begin]) & (t <= self.t[i_end])]
 
         t, sampled_data = self._get_sampled_timeseries_at_t(t)
