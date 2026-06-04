@@ -2129,3 +2129,28 @@ class Track:
         t_end = self.t[i_end]
 
         return t_end, i_end
+    
+
+    def calc_length(self,x_name='x',y_name='y'):
+        """
+        Calculate the length of the track in the xy-plane
+
+        Parameters
+        --------
+        x_name : str, optional
+            name of the column that holds x-data
+        y_name : str, optional
+            name of the column that holds y-data
+
+        Returns
+        ---------
+        length : float
+            length of the track (same unit as x and y)
+        """
+        x = self[x_name].astype(float)
+        y = self[y_name].astype(float)
+
+        dist = np.sqrt(np.diff(x)**2 + np.diff(y)**2)   # distance between consecutive points
+        length = sum(dist)
+
+        return length
