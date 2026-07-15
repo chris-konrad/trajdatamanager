@@ -7,6 +7,7 @@ Created on Thu Apr  4 16:10:17 2024
 import warnings
 import os
 import json
+import yaml
 import pandas as pd
 import numpy as np
 import datetime as dt
@@ -97,6 +98,30 @@ def difference_features_v1(data1, data2):
     yaw_feature_index = 1
 
     return ddata, yaw_feature_index
+
+
+def read_metadata_yaml(filepath):
+    """
+    Read yaml-file with metadata, created by Track.write_csv(..., write_metadata=True)
+
+    Parameters
+    --------
+    filepath : str
+        Filepath of the yaml-file with metadata
+    
+    Returns
+    --------
+    metadata : dict
+        Dictionary with metadata
+    """
+
+    with open(filepath, "r") as f:
+        metadata = yaml.safe_load(f)
+
+    duration = pd.to_timedelta(metadata['duration']).to_pytimedelta()
+    metadata['duration'] = duration
+
+    return metadata
 
 
 class DataManager:
@@ -528,11 +553,8 @@ class Sequence:
         for trk in self.tracks:
             trk.rotate_xy(alpha, deg=deg)
 
-    def shift_xy(self, dx, dy):
+    def shift_xy(self, dx, dy, x_name='x', y_name='y'):
         """Shift the tracks in this sequence in the xy plane
-
-        This requires the tracks of this sequence to have the features 'x' and 
-        'y'.       
 
         Parameters
         ----------
@@ -540,6 +562,10 @@ class Sequence:
             X-shift so that x <- x + dx
         dy : float
             Y-shift so that y <- y + dy
+        x_name: string (optional)
+            name of the column with x-data
+        y_name: string (optional)
+            name of the column with y-data
 
         Returns
         -------
@@ -547,7 +573,7 @@ class Sequence:
 
         """
         for trk in self:
-            trk.shift_xy(dx, dy)
+            trk.shift_xy(dx, dy, x_name=x_name, y_name=y_name)
 
     def plot(self, track_ids=None, axes=None, features=None, plot_over_timestamps=False, **plot_kwargs):
         """Plot all features of this track
@@ -1061,7 +1087,7 @@ class Track:
 
         self.calc_time_properties()
 
-        self.t_s = self.duration.total_seconds() / self.n
+        self.t_s = round(self.duration.total_seconds() / (self.n - 1), 6)       # round to microseconds
 
         self.yaw_feature_index = yaw_feature_index
         
@@ -1140,7 +1166,9 @@ class Track:
             written file contains absolute timestamps. If 
             the time relative to the first timestamp is desired, set 
             relative_time = self.t_begin
-        write_metadata
+        write_metadata : bool
+            If True, a .yaml-file will be written containing the metadata of
+            the Track object.
 
         Returns
         -------
@@ -1155,21 +1183,23 @@ class Track:
         df.to_csv(path_data, sep=';')
         
         if write_metadata:
-            path_metadata = os.path.join(directory, filename+"_meta.txt")
+            path_metadata = os.path.join(directory, filename+"_meta.yaml")
             
+            meta_dict = {'class_id': self.class_id,
+                         'relative_time': relative_time,
+                         'sample_time': self.t_s,
+                         'n_samples': self.n,
+                         'duration': str(self.duration)}
+            
+            if not relative_time:
+                meta_dict['t_begin'] = self.t_begin
+                meta_dict['t_end'] = self.t_end
+
+            for key in self.metadata.keys():
+                meta_dict[key] = self.metadata[key]
+
             with open(path_metadata, 'w') as f:
-                f.write(f"class_id: {self.class_id}\n")
-                f.write(f"relative_time: {relative_time}\n")
-                f.write(f"sample_time: {self.t_s}\n")
-                f.write(f"n_samples: {self.n}\n")
-                f.write(f"duration: {self.duration}\n")
-                
-                if not relative_time:
-                    f.write(f"t_begin: {self.t_begin}\n")
-                    f.write(f"t_end: {self.t_end}\n")
-                
-                for key in self.metadata.keys():
-                    f.write(f"{key}: {self.metadata[key]}\n")
+                yaml.dump(meta_dict, f)
                 
                     
                     
@@ -1438,7 +1468,7 @@ class Track:
 
         return self
     
-    def sample_at_times(self, t):
+    def sample_at_times(self, t, inplace=True):
         """Sample a track at the times t
         
         This does not extrapolate. Rather, the requested time is croped to 
@@ -1448,6 +1478,9 @@ class Track:
         ----------
         t : Array
             Sample times given as array of datetime.datetime
+        inplace : bool
+            If True, self is resampled.
+            If False, a resampled deepcopy of self is returned.
             
         Returns
         -------
@@ -1457,15 +1490,24 @@ class Track:
         
         #crop sample times to available data
         i_begin, i_end = self.get_timespan_indices(t[0], t[-1])
+        if not i_begin == 0:
+            i_begin = i_begin - 1
         t = t[(t >= self.t[i_begin]) & (t <= self.t[i_end])]
 
         t, sampled_data = self._get_sampled_timeseries_at_t(t)
         
-        self.t = t
-        self.data = sampled_data
-        self.calc_time_properties()
-
-        return self
+        if inplace:
+            self.t = t
+            self.data = sampled_data
+            self.calc_time_properties()
+            return self
+        else:
+            copy_self = copy.deepcopy(self)
+            copy_self.t = t
+            copy_self.data = sampled_data
+            copy_self.calc_time_properties()
+            return copy_self
+        
         
 
     def get_relative_time(self, t_ref=None):
@@ -1816,11 +1858,8 @@ class Track:
                
         self.data = data_new
 
-    def shift_xy(self, dx, dy):
+    def shift_xy(self, dx, dy, x_name='x', y_name='y'):
         """Shift this track in the x/y-plane.
-
-        This requires the tracks of this sequence to have the features 'x' and 
-        'y'.       
 
         Parameters
         ----------
@@ -1828,14 +1867,18 @@ class Track:
             X-shift so that x <- x + dx
         dy : float
             Y-shift so that y <- y + dy
+        x_name: string (optional)
+            name of the column with x-data
+        y_name: string (optional)
+            name of the column with y-data
 
         Returns
         -------
         None.
 
         """
-        self['x'] += dx
-        self['y'] += dy 
+        self[x_name] += dx
+        self[y_name] += dy 
 
     def has_time_overlap(self, other, dtmin=dt.timedelta(seconds=0)):
         """Check of this track overlaps in time with another track by
@@ -2086,3 +2129,28 @@ class Track:
         t_end = self.t[i_end]
 
         return t_end, i_end
+    
+
+    def calc_length(self,x_name='x',y_name='y'):
+        """
+        Calculate the length of the track in the xy-plane
+
+        Parameters
+        --------
+        x_name : str, optional
+            name of the column that holds x-data
+        y_name : str, optional
+            name of the column that holds y-data
+
+        Returns
+        ---------
+        length : float
+            length of the track (same unit as x and y)
+        """
+        x = self[x_name].astype(float)
+        y = self[y_name].astype(float)
+
+        dist = np.sqrt(np.diff(x)**2 + np.diff(y)**2)   # distance between consecutive points
+        length = sum(dist)
+
+        return length
