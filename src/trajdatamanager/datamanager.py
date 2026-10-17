@@ -1491,19 +1491,48 @@ class Track:
 
         return t_rel
     
-    def get_index_at_time(self, time):
+    def get_index_at_time(self, time, closest=False):
+        """Return the index corresponding to time t.
+
+        Parameters
+        ----------
+        time : datetime.datetime
+        closest : bool, optional
+            If true, return the index closest to time. If False, raise an error if the track does not have samples at time. By default False
+
+        Returns
+        -------
+        idx : int
+            The index of time in .data and .t
+        """
         if time < self.t_begin or time > self.t_end:
             return None
         else:
-            i = np.amin(np.where(np.isclose(self.t, time))[0])
+            delta = np.abs((self.t - time))
+            i = np.argmin(delta)
+            if not closest and delta[i] != dt.timedelta(seconds=0):
+                raise ValueError(f"{self.track_id} does not have a sample at time {time}. Closest is index {i} at {self.t[i]}. Use closes=True to return the closest index or interpolate.")
             return i
 
-    def get_states_at_time(self, time):
-        i = self.get_index_at_time(time)
+    def get_states_at_time(self, time, closest=False):
+        """Return the states corresponding to time t.
+
+        Parameters
+        ----------
+        time : datetime.datetime
+        closest : bool, optional
+            If true, return the states at index closest to time. If False, raise an error if the track does not have samples at time. By default False
+
+        Returns
+        -------
+        states : np.ndarray
+            The states at time/ 
+        """
+        i = self.get_index_at_time(time, closest=closest)
         if i is None:
             return None
         else:
-            return (self.t[i], self.x[i], self.y[i], self.z[i], self.v[i])
+            return self.data[i, :]
 
     def get_timespan_indices(self, t_begin, t_end):
         if t_begin > self.t_end or t_end < self.t_begin:
