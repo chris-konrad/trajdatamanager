@@ -52,6 +52,7 @@ Helper functions.
 ## Authors
 
 - Christoph M. Konrad, c.m.konrad@tudelft.nl
+- matthijsvdbr0ek
 
 License
 --------------------
