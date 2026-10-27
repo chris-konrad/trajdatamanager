@@ -1087,8 +1087,6 @@ class Track:
 
         self.calc_time_properties()
 
-        self.t_s = round(self.duration.total_seconds() / (self.n - 1), 6)       # round to microseconds
-
         self.yaw_feature_index = yaw_feature_index
         
     def to_dict(self, relative_time=None, features=None):
@@ -1324,6 +1322,7 @@ class Track:
         self.duration = self.t_end - self.t_begin
 
         self.n = len(self.t)
+        self.t_s = round(self.duration.total_seconds() / (self.n - 1), 6)       # round to microseconds
 
     def _get_sampled_timeseries(self, t_begin=None, t_end=None, t_s=None):
         """Get the timeseries data sampled periodically with sampling time 
